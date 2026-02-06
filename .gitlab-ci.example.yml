@@ -1,0 +1,91 @@
+# Example GitLab CI/CD configuration for notifying Flarum about new releases
+#
+# To use this configuration:
+# 1. Copy this file and rename it to `.gitlab-ci.yml`
+# 2. Add the following CI/CD variable to your repository:
+#    Settings → CI/CD → Variables:
+#    - FLARUM_API_TOKEN: Your Flarum API token (mark as protected and masked)
+# 3. Ensure your composer.json has the "support.forum" field set to your discussion URL
+#    Example: "support": { "forum": "https://discuss.flarum.org/d/12345" }
+#
+# See the README.md for detailed setup instructions
+
+stages:
+  - deploy
+
+notify-flarum-on-release:
+  stage: deploy
+  image: alpine:latest
+  only:
+    - tags
+  before_script:
+    # Install required tools
+    - apk add --no-cache curl jq git
+  script:
+    - |
+      echo "Extracting Flarum discussion info from composer.json..."
+
+      # Extract forum URL from composer.json
+      FORUM_URL=$(jq -r '.support.forum // empty' composer.json)
+
+      if [ -z "$FORUM_URL" ]; then
+        echo "Error: No support.forum field found in composer.json"
+        echo "Please add: \"support\": { \"forum\": \"https://discuss.flarum.org/d/12345\" }"
+        exit 1
+      fi
+
+      # Extract discussion ID from URL (handles both /d/123 and /d/123-slug formats)
+      DISCUSSION_ID=$(echo "$FORUM_URL" | grep -oP '/d/\K\d+' || echo "")
+
+      if [ -z "$DISCUSSION_ID" ]; then
+        echo "Error: Could not extract discussion ID from forum URL: $FORUM_URL"
+        echo "Expected format: https://discuss.flarum.org/d/12345 or https://discuss.flarum.org/d/12345-slug"
+        exit 1
+      fi
+
+      # Extract base URL (everything before /d/)
+      FLARUM_URL=$(echo "$FORUM_URL" | grep -oP '^https?://[^/]+')
+
+      echo "Found discussion ID: $DISCUSSION_ID"
+      echo "Flarum site: $FLARUM_URL"
+      echo "Sending release notification to Flarum..."
+
+      # Get release description from git tag
+      TAG_MESSAGE=$(git tag -l --format='%(contents)' $CI_COMMIT_TAG)
+
+      # Send webhook to Flarum
+      RESPONSE=$(curl -s -w "\n%{http_code}" -X POST ${FLARUM_URL}/api/fof/releases/webhook \
+        -H "Content-Type: application/json" \
+        -d "{
+          \"api_token\": \"${FLARUM_API_TOKEN}\",
+          \"discussion_id\": ${DISCUSSION_ID},
+          \"changelog\": $(echo "${TAG_MESSAGE}" | jq -R -s .),
+          \"tag_name\": \"${CI_COMMIT_TAG}\",
+          \"release_url\": \"${CI_PROJECT_URL}/-/releases/${CI_COMMIT_TAG}\",
+          \"repository_name\": \"${CI_PROJECT_PATH}\",
+          \"author\": \"${GITLAB_USER_LOGIN}\"
+        }")
+
+      # Extract status code
+      HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+      BODY=$(echo "$RESPONSE" | sed '$d')
+
+      echo "Response body: $BODY"
+      echo "HTTP status: $HTTP_CODE"
+
+      # Check response
+      if [ "$HTTP_CODE" -eq 201 ]; then
+        echo "✓ Successfully posted release notification to Flarum"
+      else
+        echo "✗ Failed to post release notification to Flarum (HTTP $HTTP_CODE)"
+        echo ""
+        echo "Please check:"
+        echo "  - FLARUM_API_TOKEN variable is set correctly"
+        echo "  - composer.json has 'support.forum' field with valid Flarum discussion URL"
+        echo "  - The discussion exists and is not deleted"
+        echo "  - The API token user has permission to post in the discussion"
+        echo "  - The FoF Extension Releases extension is installed and enabled"
+        exit 1
+      fi
+  rules:
+    - if: $CI_COMMIT_TAG

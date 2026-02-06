@@ -1,0 +1,18 @@
+fof-releases:
+  # For more details on the format
+  # Checkout https://docs.flarum.org/2.x/extend/i18n/#appendix-a-standard-key-format
+  admin:
+    settings:
+      title: Extension Releases Settings
+      username_mappings_label: Username Mappings
+      username_mappings_help: "Map GitHub/GitLab usernames to Flarum usernames (JSON format: '{\"github_user\": \"flarum_user\"}')"
+    permissions:
+      publish_release_updates_label: Publish release updates via webhook
+
+  forum:
+    post:
+      header: "🚀 **Version {version}** has been released!"
+      header_with_author: "🚀 **Version {version}** has been released by {author}!"
+      changelog_heading: "What's Changed"
+      view_release: "[**View full release →**]({url})"
+      repository: "**Repository:** {name}"
