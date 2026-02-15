@@ -12,6 +12,7 @@
 #         tag_name: ${{ github.event.release.tag_name }}
 #         release_url: ${{ github.event.release.html_url }}
 #         author: ${{ github.event.release.author.login || github.actor || '' }}
+#         # flarum_hostname: optional override (default: from composer.json support.forum)
 #       secrets:
 #         flarum_api_token: ${{ secrets.FLARUM_EXTENSION_UPDATES_API_TOKEN }}
 
@@ -43,6 +44,11 @@ on:
         type: string
         required: false
         default: ""
+      flarum_hostname:
+        description: "Forum hostname override (e.g. custom-forum.com). Defaults to hostname from composer.json support.forum"
+        type: string
+        required: false
+        default: ""
     secrets:
       flarum_api_token:
         description: "Flarum API token for authentication"
@@ -59,18 +65,30 @@ jobs:
 
       - name: Extract Flarum info from composer.json
         id: flarum
+        env:
+          FLARUM_HOSTNAME_INPUT: ${{ inputs.flarum_hostname }}
         run: |
           FORUM_URL=$(jq -r '.support.forum // empty' composer.json)
-          if [ -z "$FORUM_URL" ]; then
-            echo "Error: No support.forum in composer.json. Add: \"support\": { \"forum\": \"https://discuss.flarum.org/d/12345\" }"
-            exit 1
+
+          if [ -n "$FLARUM_HOSTNAME_INPUT" ]; then
+            HOSTNAME=$(echo "$FLARUM_HOSTNAME_INPUT" | sed -n 's|^https\?://||p')
+            [ -z "$HOSTNAME" ] && HOSTNAME="$FLARUM_HOSTNAME_INPUT"
+            FLARUM_URL="https://$HOSTNAME"
+          else
+            FLARUM_URL=$(echo "$FORUM_URL" | sed -n 's|^\(https\?://[^/]*\).*|\1|p')
           fi
+
           DISCUSSION_ID=$(echo "$FORUM_URL" | sed -n 's|.*/d/\([0-9]*\).*|\1|p')
-          if [ -z "$DISCUSSION_ID" ]; then
-            echo "Error: Could not extract discussion ID from: $FORUM_URL"
+
+          if [ -z "$FORUM_URL" ] || [ -z "$DISCUSSION_ID" ]; then
+            echo "Error: composer.json must have support.forum with a valid discussion URL. Add: \"support\": { \"forum\": \"https://discuss.flarum.org/d/12345\" }"
             exit 1
           fi
-          FLARUM_URL=$(echo "$FORUM_URL" | sed -n 's|^\(https\?://[^/]*\).*|\1|p')
+          if [ -z "$FLARUM_URL" ]; then
+            echo "Error: Could not extract forum URL from support.forum"
+            exit 1
+          fi
+
           echo "discussion_id=$DISCUSSION_ID" >> $GITHUB_OUTPUT
           echo "flarum_url=$FLARUM_URL" >> $GITHUB_OUTPUT
 

@@ -71,7 +71,7 @@ The workflow automatically reads the discussion ID and Flarum URL from your `com
    }
    ```
 
-2. Copy `.github/workflows/flarum-release-notification.example.yml` to `.github/workflows/flarum-release-notification.yml`
+2. Add the workflow to your repo: copy `.github/workflows/flarum-release-notification.yml` from this extension, or create it with the same content
 
 3. Add your API token secret:
    - Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**

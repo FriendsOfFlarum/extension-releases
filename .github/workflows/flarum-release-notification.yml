@@ -1,11 +1,5 @@
-# Example GitHub Actions workflow for notifying Flarum about new releases
-#
-# To use:
-# 1. Copy to `.github/workflows/flarum-release-notification.yml`
-# 2. Add secret: FLARUM_EXTENSION_UPDATES_API_TOKEN (your Flarum API token)
-# 3. Set support.forum in composer.json: "support": { "forum": "https://discuss.flarum.org/d/12345" }
-#
-# See README.md for setup instructions
+# Notify Flarum when this extension publishes a release
+# Requires: FLARUM_EXTENSION_UPDATES_API_TOKEN secret, support.forum in composer.json
 
 name: Notify Flarum on Release
 
