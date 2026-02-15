@@ -75,7 +75,7 @@ The workflow automatically reads the discussion ID and Flarum URL from your `com
 
 3. Add your API token secret:
    - Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
-   - Add secret: `FLARUM_API_TOKEN` with your Flarum API token from Step 2
+   - Add secret: `FLARUM_EXTENSION_UPDATES_API_TOKEN` with your Flarum API token from Step 2
 
 That's it! The workflow will automatically:
 - Extract the discussion ID from `support.forum` in `composer.json`
@@ -115,7 +115,7 @@ The pipeline automatically reads the discussion ID and Flarum URL from your `com
 
 3. Add your API token variable:
    - Go to your GitLab repository → **Settings** → **CI/CD** → **Variables**
-   - Add variable: `FLARUM_API_TOKEN` with your Flarum API token (mark as protected and masked)
+   - Add variable: `FLARUM_EXTENSION_UPDATES_API_TOKEN` with your Flarum API token (mark as protected and masked)
 
 That's it! The pipeline will automatically:
 - Extract the discussion ID from `support.forum` in `composer.json`
@@ -142,7 +142,7 @@ That's it! The pipeline will automatically:
 **Authentication:** Use Flarum's standard API authentication via the `Authorization` header:
 
 ```
-Authorization: Token YOUR_FLARUM_API_TOKEN
+Authorization: Token YOUR_FLARUM_EXTENSION_UPDATES_API_TOKEN
 ```
 
 **Request Body:**

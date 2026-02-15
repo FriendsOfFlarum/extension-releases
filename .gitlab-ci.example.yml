@@ -4,7 +4,7 @@
 # 1. Copy this file and rename it to `.gitlab-ci.yml`
 # 2. Add the following CI/CD variable to your repository:
 #    Settings → CI/CD → Variables:
-#    - FLARUM_API_TOKEN: Your Flarum API token (mark as protected and masked)
+#    - FLARUM_EXTENSION_UPDATES_API_TOKEN: Your Flarum API token (mark as protected and masked)
 # 3. Ensure your composer.json has the "support.forum" field set to your discussion URL
 #    Example: "support": { "forum": "https://discuss.flarum.org/d/12345" }
 #
@@ -56,7 +56,7 @@ notify-flarum-on-release:
       # Send webhook to Flarum (use Authorization header for API token)
       RESPONSE=$(curl -s -w "\n%{http_code}" -X POST ${FLARUM_URL}/api/fof/releases/webhook \
         -H "Content-Type: application/json" \
-        -H "Authorization: Token ${FLARUM_API_TOKEN}" \
+        -H "Authorization: Token ${FLARUM_EXTENSION_UPDATES_API_TOKEN}" \
         -d "{
           \"discussion_id\": ${DISCUSSION_ID},
           \"changelog\": $(echo "${TAG_MESSAGE}" | jq -R -s .),
@@ -79,7 +79,7 @@ notify-flarum-on-release:
         echo "✗ Failed to post release notification to Flarum (HTTP $HTTP_CODE)"
         echo ""
         echo "Please check:"
-        echo "  - FLARUM_API_TOKEN variable is set correctly"
+        echo "  - FLARUM_EXTENSION_UPDATES_API_TOKEN variable is set correctly"
         echo "  - composer.json has 'support.forum' field with valid Flarum discussion URL"
         echo "  - The discussion exists and is not deleted"
         echo "  - The API token user has permission to post in the discussion"

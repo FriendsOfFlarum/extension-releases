@@ -1,35 +1,25 @@
 # Reusable workflow for posting release notifications to Flarum
 #
-# Call this from your extension's workflow (e.g. on release published).
-# Requires FLARUM_API_TOKEN secret to be passed through.
+# Extracts discussion_id and flarum_url from composer.json (support.forum).
+# Call from your extension's workflow on release published.
 #
 # Example usage:
 #   jobs:
 #     notify:
 #       uses: FriendsOfFlarum/extension-releases/.github/workflows/REUSABLE_flarum-release-notification.yml@2.x
 #       with:
-#         flarum_url: ${{ steps.flarum-info.outputs.flarum_url }}
-#         discussion_id: ${{ steps.flarum-info.outputs.discussion_id }}
 #         changelog: ${{ github.event.release.body || '' }}
 #         tag_name: ${{ github.event.release.tag_name }}
 #         release_url: ${{ github.event.release.html_url }}
 #         author: ${{ github.event.release.author.login || github.actor || '' }}
 #       secrets:
-#         flarum_api_token: ${{ secrets.FLARUM_API_TOKEN }}
+#         flarum_api_token: ${{ secrets.FLARUM_EXTENSION_UPDATES_API_TOKEN }}
 
 name: Flarum Release Notification
 
 on:
   workflow_call:
     inputs:
-      flarum_url:
-        description: "Base URL of the Flarum forum (e.g. https://discuss.flarum.org)"
-        type: string
-        required: true
-      discussion_id:
-        description: "Discussion ID to post to"
-        type: string
-        required: true
       changelog:
         description: "Release changelog/notes"
         type: string
@@ -48,6 +38,11 @@ on:
         type: string
         required: false
         default: ""
+      ref:
+        description: "Git ref to checkout (e.g. github.ref for release tag)"
+        type: string
+        required: false
+        default: ""
     secrets:
       flarum_api_token:
         description: "Flarum API token for authentication"
@@ -57,21 +52,42 @@ jobs:
   notify-flarum:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Extract Flarum info from composer.json
+        id: flarum
+        run: |
+          FORUM_URL=$(jq -r '.support.forum // empty' composer.json)
+          if [ -z "$FORUM_URL" ]; then
+            echo "Error: No support.forum in composer.json. Add: \"support\": { \"forum\": \"https://discuss.flarum.org/d/12345\" }"
+            exit 1
+          fi
+          DISCUSSION_ID=$(echo "$FORUM_URL" | sed -n 's|.*/d/\([0-9]*\).*|\1|p')
+          if [ -z "$DISCUSSION_ID" ]; then
+            echo "Error: Could not extract discussion ID from: $FORUM_URL"
+            exit 1
+          fi
+          FLARUM_URL=$(echo "$FORUM_URL" | sed -n 's|^\(https\?://[^/]*\).*|\1|p')
+          echo "discussion_id=$DISCUSSION_ID" >> $GITHUB_OUTPUT
+          echo "flarum_url=$FLARUM_URL" >> $GITHUB_OUTPUT
+
       - name: Send Release Notification to Flarum
         env:
           CHANGELOG_INPUT: ${{ inputs.changelog }}
         run: |
-          # Build JSON body with proper escaping (changelog can contain newlines, quotes, etc.)
           CHANGELOG_JSON=$(printf '%s' "$CHANGELOG_INPUT" | jq -R -s .)
           BODY=$(jq -n \
-            --argjson discussion_id '${{ inputs.discussion_id }}' \
+            --arg discussion_id '${{ steps.flarum.outputs.discussion_id }}' \
             --argjson changelog "$CHANGELOG_JSON" \
             --arg tag_name '${{ inputs.tag_name }}' \
             --arg release_url '${{ inputs.release_url }}' \
             --arg author '${{ inputs.author }}' \
-            '{discussion_id: $discussion_id, changelog: $changelog, tag_name: $tag_name, release_url: $release_url, author: $author}')
+            '{discussion_id: ($discussion_id | tonumber), changelog: $changelog, tag_name: $tag_name, release_url: $release_url, author: $author}')
 
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST ${{ inputs.flarum_url }}/api/fof/releases/webhook \
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST ${{ steps.flarum.outputs.flarum_url }}/api/fof/releases/webhook \
             -H "Content-Type: application/json" \
             -H "Authorization: Token ${{ secrets.flarum_api_token }}" \
             -d "$BODY")
@@ -96,7 +112,7 @@ jobs:
           echo "Failed to send release notification to Flarum"
           echo ""
           echo "Please check:"
-          echo "  - FLARUM_API_TOKEN secret is set correctly"
+          echo "  - FLARUM_EXTENSION_UPDATES_API_TOKEN secret is set correctly"
           echo "  - composer.json has 'support.forum' field with valid Flarum discussion URL"
           echo "  - The discussion exists and is not deleted"
           echo "  - The API token user has permission to post in the discussion"

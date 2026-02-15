@@ -9,7 +9,7 @@ You can test the webhook endpoint manually using curl:
 ```bash
 curl -X POST https://your-flarum-site.com/api/fof/releases/webhook \
   -H "Content-Type: application/json" \
-  -H "Authorization: Token YOUR_FLARUM_API_TOKEN" \
+  -H "Authorization: Token YOUR_FLARUM_EXTENSION_UPDATES_API_TOKEN" \
   -d '{
     "discussion_id": 1,
     "changelog": "## What'\''s Changed\n\n- Fixed critical bug in authentication\n- Added support for dark mode\n- Improved performance by 50%\n\n**Full Changelog**: https://github.com/owner/repo/compare/v1.0.0...v1.1.0",
@@ -94,7 +94,7 @@ You can test the GitHub Actions workflow locally using [act](https://github.com/
 
 2. Create a `.secrets` file:
    ```
-   FLARUM_API_TOKEN=your-token-here
+   FLARUM_EXTENSION_UPDATES_API_TOKEN=your-token-here
    FLARUM_DISCUSSION_ID=1
    ```
 
@@ -120,7 +120,7 @@ You can test GitLab CI locally using [gitlab-runner](https://docs.gitlab.com/run
 2. Run the pipeline:
    ```bash
    gitlab-runner exec docker notify-flarum-on-release \
-     --env FLARUM_API_TOKEN=your-token \
+     --env FLARUM_EXTENSION_UPDATES_API_TOKEN=your-token \
      --env FLARUM_DISCUSSION_ID=1 \
      --env FLARUM_SITE_URL=https://your-site.com
    ```
