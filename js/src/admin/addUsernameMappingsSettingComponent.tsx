@@ -6,8 +6,8 @@ import UsernameMappingsSettingComponent from './components/UsernameMappingsSetti
 export default function () {
   extend(FormGroup.prototype, 'customFieldComponents', function (items) {
     items.add('fof-releases.username-mappings', (attrs: IFormGroupAttrs) => {
-      const bidi = attrs.bidi ?? attrs.stream;
-      return <UsernameMappingsSettingComponent {...attrs} bidi={bidi} />;
+      // FormGroup passes stream as bidi for custom components
+      return <UsernameMappingsSettingComponent {...attrs} bidi={attrs.stream} />;
     });
   });
 }
