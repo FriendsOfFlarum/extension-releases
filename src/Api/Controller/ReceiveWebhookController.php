@@ -46,7 +46,7 @@ class ReceiveWebhookController implements RequestHandlerInterface
             ]);
         }
 
-        $response = $this->releases->createReleasePost(
+        $result = $this->releases->createReleasePost(
             $actor,
             (int) $discussionId,
             $changelog,
@@ -56,20 +56,10 @@ class ReceiveWebhookController implements RequestHandlerInterface
             $request
         );
 
-        $statusCode = $response->getStatusCode();
-        if ($statusCode !== 201) {
-            return $response;
-        }
-
-        $body = json_decode($response->getBody()->getContents(), true);
-        if (isset($body['data']['id'], $body['data']['attributes']['number'])) {
-            return new JsonResponse([
-                'success' => true,
-                'post_id' => (int) $body['data']['id'],
-                'post_number' => (int) $body['data']['attributes']['number'],
-            ], 201);
-        }
-
-        return $response;
+        return new JsonResponse([
+            'success' => true,
+            'post_id' => $result['id'],
+            'post_number' => $result['number'],
+        ], 201);
     }
 }

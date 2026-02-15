@@ -12,9 +12,7 @@
 namespace FoF\Releases;
 
 use Flarum\Extend;
-use Flarum\Post\Event\Saving;
 use FoF\Releases\Api\Controller\ReceiveWebhookController;
-use FoF\Releases\Listener\ApproveReleasePost;
 
 return [
     (new Extend\Frontend('forum'))
@@ -29,10 +27,4 @@ return [
     (new Extend\Routes('api'))
         ->post('/fof/releases/webhook', 'releases.webhook', ReceiveWebhookController::class),
 
-    // Auto-approve posts created by webhook users (only when flarum/approval is enabled)
-    (new Extend\Conditional())
-        ->whenExtensionEnabled('flarum-approval', fn () => [
-            (new Extend\Event())
-                ->listen(Saving::class, ApproveReleasePost::class),
-        ]),
 ];

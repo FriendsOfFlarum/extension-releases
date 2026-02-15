@@ -30,7 +30,7 @@ You need an API token for the user who will post the release notifications:
 
 **Prerequisites:**
 - The user must have the **"Create access token"** permission (found in **Permissions** → **Moderate** section)
-- The user should also have the **"Publish release updates via webhook"** permission (found in **Permissions** → **Start Discussions** section)
+- The user must have the **"Publish release updates via webhook"** permission (found in **Permissions** → **Start Discussions** section)
 
 **Generate Token:**
 
@@ -227,6 +227,10 @@ composer test:setup
 - Check that the user has permission to reply to the discussion
 - Verify the discussion isn't locked
 
+### Posts still require approval (flarum/approval)
+
+This extension creates posts directly (bypassing the API) and sets `is_approved = true`, so webhook posts should not require approval. If they still do, ensure flarum/approval is enabled and the extension is up to date.
+
 ### Webhook returns 404 Not Found
 
 - Double-check the discussion ID exists
@@ -242,8 +246,6 @@ src/
 ├── Api/
 │   └── Controller/
 │       └── ReceiveWebhookController.php
-├── Listener/
-│   └── ApproveReleasePost.php
 └── Repository/
     └── ReleaseRepository.php
 tests/

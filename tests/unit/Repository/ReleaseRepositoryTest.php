@@ -19,7 +19,7 @@ class ReleaseRepositoryTest extends TestCase
     public function test_format_release_content_includes_all_fields(): void
     {
         $repository = new ReleaseRepository(
-            $this->createMock(\Flarum\Api\Client::class)
+            $this->createMock(\Flarum\Extension\ExtensionManager::class)
         );
 
         $reflection = new \ReflectionClass($repository);
@@ -44,7 +44,7 @@ class ReleaseRepositoryTest extends TestCase
     public function test_format_release_content_handles_empty_optional_fields(): void
     {
         $repository = new ReleaseRepository(
-            $this->createMock(\Flarum\Api\Client::class)
+            $this->createMock(\Flarum\Extension\ExtensionManager::class)
         );
 
         $reflection = new \ReflectionClass($repository);
