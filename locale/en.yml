@@ -5,7 +5,10 @@ fof-releases:
     settings:
       title: Extension Releases Settings
       username_mappings_label: Username Mappings
-      username_mappings_help: "Map GitHub/GitLab usernames to Flarum usernames (JSON format: '{\"github_user\": \"flarum_user\"}')"
+      username_mappings_help: "Map GitHub/GitLab usernames to Flarum usernames. When a release author matches a platform username, they will be shown as @ForumUsername (a mention)."
+      platform_username_placeholder: "GitHub/GitLab username"
+      forum_username_placeholder: "Forum username"
+      add_mapping_button: "Add mapping"
     permissions:
       publish_release_updates_label: Publish release updates via webhook
 

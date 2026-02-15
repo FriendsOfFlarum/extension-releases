@@ -7,11 +7,10 @@ A [Flarum](https://flarum.org) 2.0 extension that automatically posts release no
 ## Features
 
 - 🚀 Automatic release notifications posted to Flarum discussions
-- 🔐 Secure webhook endpoint with API token authentication
-- 🎨 Customizable post template with translation support
-- 👥 Username mapping from GitHub/GitLab to Flarum usernames for proper `@mentions`
+- 🔐 Secure webhook endpoint with Flarum API token authentication (Authorization header)
 - ✅ Full test coverage (unit and integration tests)
-- 🔧 Support for both GitHub and GitLab webhooks
+- 🔧 Support for both GitHub Actions and GitLab CI/CD
+- ✅ Auto-approves posts when flarum/approval is enabled
 
 ## Installation
 
@@ -25,30 +24,13 @@ Then enable the extension in your Flarum admin panel.
 
 ## Configuration
 
-### Step 1: Configure Extension Settings
-
-1. Go to your Flarum admin panel
-2. Navigate to **Extensions** → **FoF Extension Releases**
-3. Configure **Username Mappings** (optional):
-   - Maps GitHub/GitLab usernames to Flarum usernames
-   - Format: JSON object, e.g., `{"github_user": "flarum_user", "another_github": "another_flarum"}`
-   - This allows the extension to properly mention Flarum users when posting releases
-
-Example username mapping:
-```json
-{
-  "octocat": "john_doe",
-  "jane-developer": "jane_smith"
-}
-```
-
-### Step 2: Generate a Flarum API Token
+### Step 1: Generate a Flarum API Token
 
 You need an API token for the user who will post the release notifications:
 
 **Prerequisites:**
 - The user must have the **"Create access token"** permission (found in **Permissions** → **Moderate** section)
-- The user should also have the **"Publish release updates via webhook"** permission (found in **Permissions** → **Start Discussions** section)
+- The user must have the **"Publish release updates via webhook"** permission (found in **Permissions** → **Start Discussions** section)
 
 **Generate Token:**
 
@@ -72,7 +54,7 @@ curl -X POST https://your-flarum-site.com/api/token \
 
 **Note:** Make sure to grant both required permissions to the user in the admin panel before attempting to use the webhook.
 
-### Step 3: Setup GitHub Webhook
+### Step 2: Setup GitHub Webhook
 
 #### Option A: Using GitHub Actions (Recommended)
 
@@ -89,11 +71,11 @@ The workflow automatically reads the discussion ID and Flarum URL from your `com
    }
    ```
 
-2. Copy `.github/workflows/flarum-release-notification.example.yml` to `.github/workflows/flarum-release-notification.yml`
+2. Add the workflow to your repo: copy `.github/workflows/flarum-release-notification.yml` from this extension, or create it with the same content
 
 3. Add your API token secret:
    - Go to your GitHub repository → **Settings** → **Secrets and variables** → **Actions**
-   - Add secret: `FLARUM_API_TOKEN` with your Flarum API token from Step 2
+   - Add secret: `FLARUM_EXTENSION_UPDATES_API_TOKEN` with your Flarum API token from Step 2
 
 That's it! The workflow will automatically:
 - Extract the discussion ID from `support.forum` in `composer.json`
@@ -112,7 +94,7 @@ That's it! The workflow will automatically:
 
 **Note:** Standard GitHub webhooks don't include the API token or discussion ID. You'll need a middleware service or use GitHub Actions instead.
 
-### Step 4: Setup GitLab Webhook
+### Step 3: Setup GitLab Webhook
 
 #### Option A: Using GitLab CI/CD (Recommended)
 
@@ -133,7 +115,7 @@ The pipeline automatically reads the discussion ID and Flarum URL from your `com
 
 3. Add your API token variable:
    - Go to your GitLab repository → **Settings** → **CI/CD** → **Variables**
-   - Add variable: `FLARUM_API_TOKEN` with your Flarum API token (mark as protected and masked)
+   - Add variable: `FLARUM_EXTENSION_UPDATES_API_TOKEN` with your Flarum API token (mark as protected and masked)
 
 That's it! The pipeline will automatically:
 - Extract the discussion ID from `support.forum` in `composer.json`
@@ -157,19 +139,31 @@ That's it! The pipeline will automatically:
 
 **POST** `/api/fof/releases/webhook`
 
+**Authentication:** Use Flarum's standard API authentication via the `Authorization` header:
+
+```
+Authorization: Token YOUR_FLARUM_EXTENSION_UPDATES_API_TOKEN
+```
+
 **Request Body:**
 
 ```json
 {
-  "api_token": "string (required) - Flarum API token",
-  "discussion_id": "integer (required) - Discussion ID to post to",
-  "changelog": "string (required) - Release notes/changelog",
-  "tag_name": "string (required) - Version tag (e.g., v1.0.0)",
-  "release_url": "string (optional) - URL to the release page",
-  "repository_name": "string (optional) - Repository name (e.g., owner/repo)",
-  "author": "string (optional) - GitHub/GitLab username of release author"
+  "discussion_id": 123,
+  "changelog": "## What's Changed\n\n- Fixed bug #42\n- Added new feature",
+  "tag_name": "v1.0.0",
+  "release_url": "https://github.com/owner/repo/releases/tag/v1.0.0",
+  "author": "octocat"
 }
 ```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `discussion_id` | Yes | Discussion ID to post to |
+| `changelog` | Yes | Release notes/changelog (Markdown supported) |
+| `tag_name` | Yes | Version tag (e.g., v1.0.0) |
+| `release_url` | No | URL to the release page |
+| `author` | No | GitHub/GitLab username of release author |
 
 **Responses:**
 
@@ -182,53 +176,26 @@ That's it! The pipeline will automatically:
   }
   ```
 
-- `401 Unauthorized` - Invalid API token
-  ```json
-  {
-    "error": "Invalid API token"
-  }
-  ```
-
-- `403 Forbidden` - User lacks permission to reply
-  ```json
-  {
-    "error": "User does not have permission to reply to this discussion"
-  }
-  ```
-
+- `403 Forbidden` - Not authenticated or lacks permission
 - `404 Not Found` - Discussion not found
-  ```json
-  {
-    "error": "Discussion not found"
-  }
-  ```
+- `422 Unprocessable Entity` - Missing required fields (discussion_id, changelog, or tag_name)
 
-- `422 Unprocessable Entity` - Missing required fields
-  ```json
-  {
-    "error": "Missing required fields: api_token, discussion_id, changelog, tag_name"
-  }
-  ```
+## Post Format
 
-## Post Template
-
-Release posts follow this template structure:
+Release posts use this structure:
 
 ```
-🚀 **Version {version}** has been released by @{author}!
+## 🚀 New Release: {tag_name}
 
-## What's Changed
+**Author:** {author}
+**Release URL:** {release_url}
+
+### Changelog
 
 {changelog}
-
----
-
-[**View full release →**]({release_url})
-
-**Repository:** {repository_name}
 ```
 
-You can customize the template by modifying the translation keys in `locale/en.yml` or providing translations in other languages.
+Optional fields (author, release_url) are omitted when not provided.
 
 ## Testing
 
@@ -260,16 +227,14 @@ composer test:setup
 - Check that the user has permission to reply to the discussion
 - Verify the discussion isn't locked
 
+### Posts still require approval (flarum/approval)
+
+This extension creates posts directly (bypassing the API) and sets `is_approved = true`, so webhook posts should not require approval. If they still do, ensure flarum/approval is enabled and the extension is up to date.
+
 ### Webhook returns 404 Not Found
 
 - Double-check the discussion ID exists
 - Ensure the discussion hasn't been deleted
-
-### Username mapping not working
-
-- Verify the JSON format is correct in the extension settings
-- Check for typos in usernames
-- Remember: mapping keys are case-sensitive
 
 ## Development
 
@@ -281,13 +246,12 @@ src/
 ├── Api/
 │   └── Controller/
 │       └── ReceiveWebhookController.php
-├── Service/
-│   ├── ReleaseNotificationService.php
-│   └── ServiceProvider.php
+└── Repository/
+    └── ReleaseRepository.php
 tests/
 ├── unit/
-│   └── Service/
-│       └── ReleaseNotificationServiceTest.php
+│   └── Repository/
+│       └── ReleaseRepositoryTest.php
 └── integration/
     └── Api/
         └── ReceiveWebhookTest.php

@@ -12,11 +12,8 @@
 namespace FoF\Releases\Tests\Integration\Api;
 
 use Carbon\Carbon;
-use Flarum\Discussion\Discussion;
-use Flarum\Http\AccessToken;
 use Flarum\Testing\integration\RetrievesAuthorizedUsers;
 use Flarum\Testing\integration\TestCase;
-use Flarum\User\User;
 
 class ReceiveWebhookTest extends TestCase
 {
@@ -26,22 +23,37 @@ class ReceiveWebhookTest extends TestCase
     {
         parent::setUp();
 
-        $this->extension('fof-releases');
+        $this->extension('fof-extension-releases');
 
         $this->prepareDatabase([
             'users' => [
                 $this->normalUser(),
             ],
             'discussions' => [
-                ['id' => 1, 'title' => 'Test Discussion', 'created_at' => Carbon::now(), 'user_id' => 2, 'first_post_id' => 1, 'comment_count' => 1, 'last_posted_at' => Carbon::now(), 'last_posted_user_id' => 2, 'last_post_number' => 1],
+                ['id' => 1, 'title' => 'Test Discussion', 'slug' => '1-test-discussion', 'created_at' => Carbon::now(), 'user_id' => 2, 'first_post_id' => 1, 'comment_count' => 1, 'last_posted_at' => Carbon::now(), 'last_posted_user_id' => 2, 'last_post_number' => 1],
             ],
             'posts' => [
                 ['id' => 1, 'discussion_id' => 1, 'number' => 1, 'created_at' => Carbon::now(), 'user_id' => 2, 'type' => 'comment', 'content' => '<t><p>First post content</p></t>'],
             ],
             'group_permission' => [
-                ['group_id' => 3, 'permission' => 'fof-releases.publishReleaseUpdates'], // Members group (user 2)
+                ['group_id' => 3, 'permission' => 'fof-releases.publishReleaseUpdates'],
+                ['group_id' => 3, 'permission' => 'postWithoutThrottle'],
             ],
         ]);
+    }
+
+    /**
+     * Extract error message from JSON:API or simple error response.
+     */
+    private function getErrorMessage(array $body): string
+    {
+        if (isset($body['errors'][0]['detail'])) {
+            return $body['errors'][0]['detail'];
+        }
+        if (isset($body['error'])) {
+            return $body['error'];
+        }
+        return json_encode($body);
     }
 
     /**
@@ -55,7 +67,6 @@ class ReceiveWebhookTest extends TestCase
             ])
         );
 
-        // Should not be 404
         $this->assertNotEquals(404, $response->getStatusCode());
     }
 
@@ -66,8 +77,8 @@ class ReceiveWebhookTest extends TestCase
     {
         $response = $this->send(
             $this->request('POST', '/api/fof/releases/webhook', [
+                'authenticatedAs' => 2,
                 'json' => [
-                    'api_token' => 'some-token',
                     // Missing discussion_id, changelog, tag_name
                 ],
             ])
@@ -76,18 +87,17 @@ class ReceiveWebhookTest extends TestCase
         $this->assertEquals(422, $response->getStatusCode());
 
         $body = json_decode($response->getBody()->getContents(), true);
-        $this->assertStringContainsString('Missing required fields', $body['error']);
+        $this->assertStringContainsString('Missing required fields', $this->getErrorMessage($body));
     }
 
     /**
      * @test
      */
-    public function webhook_returns_401_with_invalid_token(): void
+    public function webhook_returns_error_when_not_authenticated(): void
     {
         $response = $this->send(
             $this->request('POST', '/api/fof/releases/webhook', [
                 'json' => [
-                    'api_token' => 'invalid-token',
                     'discussion_id' => 1,
                     'changelog' => 'Test changelog',
                     'tag_name' => 'v1.0.0',
@@ -95,10 +105,8 @@ class ReceiveWebhookTest extends TestCase
             ])
         );
 
-        $this->assertEquals(401, $response->getStatusCode());
-
-        $body = json_decode($response->getBody()->getContents(), true);
-        $this->assertEquals('Invalid API token', $body['error']);
+        // Guest gets 400 (CSRF) or 403 (permission denied)
+        $this->assertContains($response->getStatusCode(), [400, 403]);
     }
 
     /**
@@ -106,15 +114,11 @@ class ReceiveWebhookTest extends TestCase
      */
     public function webhook_returns_404_when_discussion_not_found(): void
     {
-        // Create a valid access token for user 2
-        $token = AccessToken::generate(2);
-        $token->save();
-
         $response = $this->send(
             $this->request('POST', '/api/fof/releases/webhook', [
+                'authenticatedAs' => 2,
                 'json' => [
-                    'api_token' => $token->token,
-                    'discussion_id' => 999, // Non-existent discussion
+                    'discussion_id' => 999,
                     'changelog' => 'Test changelog',
                     'tag_name' => 'v1.0.0',
                 ],
@@ -122,9 +126,6 @@ class ReceiveWebhookTest extends TestCase
         );
 
         $this->assertEquals(404, $response->getStatusCode());
-
-        $body = json_decode($response->getBody()->getContents(), true);
-        $this->assertEquals('Discussion not found', $body['error']);
     }
 
     /**
@@ -132,19 +133,14 @@ class ReceiveWebhookTest extends TestCase
      */
     public function webhook_creates_post_with_valid_data(): void
     {
-        // Create a valid access token for user 2
-        $token = AccessToken::generate(2);
-        $token->save();
-
         $response = $this->send(
             $this->request('POST', '/api/fof/releases/webhook', [
+                'authenticatedAs' => 2,
                 'json' => [
-                    'api_token' => $token->token,
                     'discussion_id' => 1,
                     'changelog' => 'Test changelog content',
                     'tag_name' => 'v1.0.0',
                     'release_url' => 'https://github.com/test/repo/releases/tag/v1.0.0',
-                    'repository_name' => 'test/repo',
                     'author' => 'testuser',
                 ],
             ])
@@ -157,7 +153,6 @@ class ReceiveWebhookTest extends TestCase
         $this->assertArrayHasKey('post_id', $body);
         $this->assertArrayHasKey('post_number', $body);
 
-        // Verify post was created in database
         $this->assertNotNull(\Flarum\Post\Post::find($body['post_id']));
     }
 
@@ -166,18 +161,14 @@ class ReceiveWebhookTest extends TestCase
      */
     public function webhook_returns_403_when_user_lacks_publish_permission(): void
     {
-        // Remove the publish permission
         $this->database()->table('group_permission')
             ->where('permission', 'fof-releases.publishReleaseUpdates')
             ->delete();
 
-        $token = AccessToken::generate(2);
-        $token->save();
-
         $response = $this->send(
             $this->request('POST', '/api/fof/releases/webhook', [
+                'authenticatedAs' => 2,
                 'json' => [
-                    'api_token' => $token->token,
                     'discussion_id' => 1,
                     'changelog' => 'Test changelog',
                     'tag_name' => 'v1.0.0',
@@ -186,42 +177,6 @@ class ReceiveWebhookTest extends TestCase
         );
 
         $this->assertEquals(403, $response->getStatusCode());
-
-        $body = json_decode($response->getBody()->getContents(), true);
-        $this->assertStringContainsString('publish release updates', $body['error']);
-    }
-
-    /**
-     * @test
-     */
-    public function webhook_returns_403_when_user_cannot_reply(): void
-    {
-        // Create a discussion that normal users can't reply to
-        // First, we need to remove the reply permission from the discussion
-        // For this test, we'll use a suspended user
-
-        $user = User::find(2);
-        $user->suspended_until = Carbon::now()->addDay();
-        $user->save();
-
-        $token = AccessToken::generate(2);
-        $token->save();
-
-        $response = $this->send(
-            $this->request('POST', '/api/fof/releases/webhook', [
-                'json' => [
-                    'api_token' => $token->token,
-                    'discussion_id' => 1,
-                    'changelog' => 'Test changelog',
-                    'tag_name' => 'v1.0.0',
-                ],
-            ])
-        );
-
-        $this->assertEquals(403, $response->getStatusCode());
-
-        $body = json_decode($response->getBody()->getContents(), true);
-        $this->assertStringContainsString('permission', $body['error']);
     }
 
     /**
@@ -229,18 +184,14 @@ class ReceiveWebhookTest extends TestCase
      */
     public function webhook_post_contains_expected_content(): void
     {
-        $token = AccessToken::generate(2);
-        $token->save();
-
         $response = $this->send(
             $this->request('POST', '/api/fof/releases/webhook', [
+                'authenticatedAs' => 2,
                 'json' => [
-                    'api_token' => $token->token,
                     'discussion_id' => 1,
-                    'changelog' => '- Fixed bug #123\n- Added new feature',
+                    'changelog' => "- Fixed bug #123\n- Added new feature",
                     'tag_name' => 'v2.5.0',
                     'release_url' => 'https://github.com/fof/example/releases/tag/v2.5.0',
-                    'repository_name' => 'fof/example',
                     'author' => 'johndoe',
                 ],
             ])

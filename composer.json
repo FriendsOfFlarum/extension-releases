@@ -91,6 +91,7 @@
         "flarum/testing": "^2.0",
         "mockery/mockery": "^1.6",
         "flarum/tags": "*",
-        "flarum/approval": "*"
+        "flarum/approval": "*",
+        "flarum/mentions": "*"
     }
 }

@@ -12,14 +12,17 @@
 namespace FoF\Releases;
 
 use Flarum\Extend;
-use Flarum\Post\Event\Saving;
 use FoF\Releases\Api\Controller\ReceiveWebhookController;
-use FoF\Releases\Listener\ApproveReleasePost;
 
 return [
+    (new Extend\Settings())
+        ->default('fof-releases.username_mappings', json_encode([
+            ['platform' => 'imorland', 'forum' => 'IanM'],
+            ['platform' => 'DavideIadeluca', 'forum' => 'davetodave178'],
+        ])),
+
     (new Extend\Frontend('forum'))
-        ->js(__DIR__.'/js/dist/forum.js')
-        ->css(__DIR__.'/less/forum.less'),
+        ->js(__DIR__.'/js/dist/forum.js'),
 
     (new Extend\Frontend('admin'))
         ->js(__DIR__.'/js/dist/admin.js')
@@ -31,11 +34,4 @@ return [
     (new Extend\Routes('api'))
         ->post('/fof/releases/webhook', 'releases.webhook', ReceiveWebhookController::class),
 
-    (new Extend\Csrf())
-        //->exemptRoute(('releases.webhook'))
-        ,
-
-    // Auto-approve posts created by webhook users
-    // (new Extend\Event())
-    //     ->listen(Saving::class, ApproveReleasePost::class),
 ];

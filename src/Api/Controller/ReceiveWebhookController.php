@@ -30,17 +30,15 @@ class ReceiveWebhookController implements RequestHandlerInterface
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $actor = RequestUtil::getActor($request);
-        $actor->assertCan('fof-releases.publishReleaseUpdates');    
-    
-        $body = $request->getParsedBody();
+        $actor->assertCan('fof-releases.publishReleaseUpdates');
 
-        // Validate required fields
+        $body = $request->getParsedBody() ?? [];
+
         $discussionId = Arr::get($body, 'discussion_id');
         $changelog = Arr::get($body, 'changelog');
         $tagName = Arr::get($body, 'tag_name');
         $releaseUrl = Arr::get($body, 'release_url');
-        $repositoryName = Arr::get($body, 'repository_name');
-        $author = Arr::get($body, 'author'); // GitHub/GitLab username
+        $author = Arr::get($body, 'author');
 
         if (!$discussionId || !$changelog || !$tagName) {
             throw new ValidationException([
@@ -48,15 +46,20 @@ class ReceiveWebhookController implements RequestHandlerInterface
             ]);
         }
 
-        return $this->releases->createReleasePost(
+        $result = $this->releases->createReleasePost(
             $actor,
-            $discussionId,
+            (int) $discussionId,
             $changelog,
             $tagName,
             $releaseUrl,
-            $repositoryName,
             $author,
             $request
         );
+
+        return new JsonResponse([
+            'success' => true,
+            'post_id' => $result['id'],
+            'post_number' => $result['number'],
+        ], 201);
     }
 }
