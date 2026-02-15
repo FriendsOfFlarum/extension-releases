@@ -10,8 +10,8 @@ export default [
       setting: 'fof-releases.username_mappings',
       label: app.translator.trans('fof-releases.admin.settings.username_mappings_label'),
       help: app.translator.trans('fof-releases.admin.settings.username_mappings_help'),
-      type: 'textarea',
-      placeholder: '{\n  "github_username": "flarum_username",\n  "another_github": "another_flarum"\n}',
+      type: 'fof-releases.username-mappings',
+      json: true,
     }))
     .permission(
       () => ({

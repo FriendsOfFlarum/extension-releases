@@ -18,8 +18,14 @@ class ReleaseRepositoryTest extends TestCase
 {
     public function test_format_release_content_includes_all_fields(): void
     {
+        $settings = $this->createMock(\Flarum\Settings\SettingsRepositoryInterface::class);
+        $settings->method('get')->willReturn(null);
+
         $repository = new ReleaseRepository(
-            $this->createMock(\Flarum\Extension\ExtensionManager::class)
+            $this->createMock(\Flarum\Extension\ExtensionManager::class),
+            $settings,
+            $this->createMock(\Flarum\User\UserRepository::class),
+            $this->createMock(\Illuminate\Contracts\Events\Dispatcher::class)
         );
 
         $reflection = new \ReflectionClass($repository);
@@ -43,8 +49,14 @@ class ReleaseRepositoryTest extends TestCase
 
     public function test_format_release_content_handles_empty_optional_fields(): void
     {
+        $settings = $this->createMock(\Flarum\Settings\SettingsRepositoryInterface::class);
+        $settings->method('get')->willReturn(null);
+
         $repository = new ReleaseRepository(
-            $this->createMock(\Flarum\Extension\ExtensionManager::class)
+            $this->createMock(\Flarum\Extension\ExtensionManager::class),
+            $settings,
+            $this->createMock(\Flarum\User\UserRepository::class),
+            $this->createMock(\Illuminate\Contracts\Events\Dispatcher::class)
         );
 
         $reflection = new \ReflectionClass($repository);
@@ -63,5 +75,49 @@ class ReleaseRepositoryTest extends TestCase
         $this->assertStringContainsString('Changelog only', $result);
         $this->assertStringNotContainsString('**Author:**', $result);
         $this->assertStringNotContainsString('**Release URL:**', $result);
+    }
+
+    public function test_username_mapping_replaces_in_author_and_content(): void
+    {
+        $settings = $this->createMock(\Flarum\Settings\SettingsRepositoryInterface::class);
+        $settings->method('get')
+            ->with('fof-releases.username_mappings')
+            ->willReturn(json_encode([['platform' => 'imorland', 'forum' => 'ianm']]));
+
+        $user = (object) [
+            'id' => 1,
+            'username' => 'ianm',
+            'display_name' => 'IanM',
+        ];
+
+        $queryBuilder = $this->createMock(\Illuminate\Database\Eloquent\Builder::class);
+        $queryBuilder->method('where')->with('username', 'ianm')->willReturnSelf();
+        $queryBuilder->method('first')->willReturn($user);
+
+        $users = $this->createMock(\Flarum\User\UserRepository::class);
+        $users->method('query')->willReturn($queryBuilder);
+
+        $repository = new ReleaseRepository(
+            $this->createMock(\Flarum\Extension\ExtensionManager::class),
+            $settings,
+            $users,
+            $this->createMock(\Illuminate\Contracts\Events\Dispatcher::class)
+        );
+
+        $reflection = new \ReflectionClass($repository);
+        $method = $reflection->getMethod('formatReleaseContent');
+        $method->setAccessible(true);
+
+        $result = $method->invoke(
+            $repository,
+            'Thanks to imorland for the fix. Also @imorland contributed.',
+            'v1.0.0',
+            'https://example.com',
+            'imorland'
+        );
+
+        $this->assertStringContainsString('**Author:** @"IanM"#1', $result);
+        $this->assertStringContainsString('Thanks to @"IanM"#1 for the fix', $result);
+        $this->assertStringContainsString('Also @"IanM"#1 contributed.', $result);
     }
 }
