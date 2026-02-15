@@ -30,17 +30,15 @@ class ReceiveWebhookController implements RequestHandlerInterface
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $actor = RequestUtil::getActor($request);
-        $actor->assertCan('fof-releases.publishReleaseUpdates');    
-    
-        $body = $request->getParsedBody();
+        $actor->assertCan('fof-releases.publishReleaseUpdates');
 
-        // Validate required fields
+        $body = $request->getParsedBody() ?? [];
+
         $discussionId = Arr::get($body, 'discussion_id');
         $changelog = Arr::get($body, 'changelog');
         $tagName = Arr::get($body, 'tag_name');
         $releaseUrl = Arr::get($body, 'release_url');
-        $repositoryName = Arr::get($body, 'repository_name');
-        $author = Arr::get($body, 'author'); // GitHub/GitLab username
+        $author = Arr::get($body, 'author');
 
         if (!$discussionId || !$changelog || !$tagName) {
             throw new ValidationException([
@@ -48,15 +46,30 @@ class ReceiveWebhookController implements RequestHandlerInterface
             ]);
         }
 
-        return $this->releases->createReleasePost(
+        $response = $this->releases->createReleasePost(
             $actor,
-            $discussionId,
+            (int) $discussionId,
             $changelog,
             $tagName,
             $releaseUrl,
-            $repositoryName,
             $author,
             $request
         );
+
+        $statusCode = $response->getStatusCode();
+        if ($statusCode !== 201) {
+            return $response;
+        }
+
+        $body = json_decode($response->getBody()->getContents(), true);
+        if (isset($body['data']['id'], $body['data']['attributes']['number'])) {
+            return new JsonResponse([
+                'success' => true,
+                'post_id' => (int) $body['data']['id'],
+                'post_number' => (int) $body['data']['attributes']['number'],
+            ], 201);
+        }
+
+        return $response;
     }
 }

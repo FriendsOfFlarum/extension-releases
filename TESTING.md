@@ -9,13 +9,12 @@ You can test the webhook endpoint manually using curl:
 ```bash
 curl -X POST https://your-flarum-site.com/api/fof/releases/webhook \
   -H "Content-Type: application/json" \
+  -H "Authorization: Token YOUR_FLARUM_API_TOKEN" \
   -d '{
-    "api_token": "YOUR_FLARUM_API_TOKEN",
     "discussion_id": 1,
     "changelog": "## What'\''s Changed\n\n- Fixed critical bug in authentication\n- Added support for dark mode\n- Improved performance by 50%\n\n**Full Changelog**: https://github.com/owner/repo/compare/v1.0.0...v1.1.0",
     "tag_name": "v1.1.0",
     "release_url": "https://github.com/owner/repo/releases/tag/v1.1.0",
-    "repository_name": "owner/repo",
     "author": "octocat"
   }'
 ```
@@ -31,19 +30,9 @@ curl -X POST https://your-flarum-site.com/api/fof/releases/webhook \
 }
 ```
 
-**Error (422 Unprocessable Entity):**
-```json
-{
-  "error": "Missing required fields: api_token, discussion_id, changelog, tag_name"
-}
-```
+**Error (422 Unprocessable Entity):** Missing required fields (discussion_id, changelog, or tag_name)
 
-**Error (401 Unauthorized):**
-```json
-{
-  "error": "Invalid API token"
-}
-```
+**Error (403 Forbidden):** Not authenticated or lacks permission
 
 ## Running Automated Tests
 
@@ -77,11 +66,9 @@ composer test:integration
 The extension includes comprehensive test coverage:
 
 #### Unit Tests
-- `ReleaseNotificationServiceTest.php`:
-  - Token authentication
-  - Discussion retrieval
-  - Username mapping
-  - Post content generation
+- `ReleaseRepositoryTest.php`:
+  - Post content formatting with all fields
+  - Post content formatting with optional fields omitted
 
 #### Integration Tests
 - `ReceiveWebhookTest.php`:
@@ -178,5 +165,6 @@ Check webhook response headers:
 ```bash
 curl -v -X POST https://your-flarum-site.com/api/fof/releases/webhook \
   -H "Content-Type: application/json" \
-  -d '{"api_token":"...","discussion_id":1,"changelog":"test","tag_name":"v1.0.0"}'
+  -H "Authorization: Token YOUR_TOKEN" \
+  -d '{"discussion_id":1,"changelog":"test","tag_name":"v1.0.0"}'
 ```

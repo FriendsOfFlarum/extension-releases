@@ -6,15 +6,13 @@ export default [
   ...commonExtend,
 
   new Extend.Admin() //
-    .setting(
-      () => ({
-        setting: 'fof-releases.username_mappings',
-        label: app.translator.trans('fof-releases.admin.settings.username_mappings_label'),
-        help: app.translator.trans('fof-releases.admin.settings.username_mappings_help'),
-        type: 'textarea',
-        placeholder: '{\n  "github_username": "flarum_username",\n  "another_github": "another_flarum"\n}',
-      })
-    )
+    .setting(() => ({
+      setting: 'fof-releases.username_mappings',
+      label: app.translator.trans('fof-releases.admin.settings.username_mappings_label'),
+      help: app.translator.trans('fof-releases.admin.settings.username_mappings_help'),
+      type: 'textarea',
+      placeholder: '{\n  "github_username": "flarum_username",\n  "another_github": "another_flarum"\n}',
+    }))
     .permission(
       () => ({
         icon: 'fas fa-rocket',
@@ -22,5 +20,5 @@ export default [
         permission: 'fof-releases.publishReleaseUpdates',
       }),
       'reply'
-    )
+    ),
 ];

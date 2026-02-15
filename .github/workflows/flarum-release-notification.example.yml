@@ -18,7 +18,6 @@ on:
 jobs:
   notify-flarum:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,7 +35,8 @@ jobs:
           fi
 
           # Extract discussion ID from URL (handles both /d/123 and /d/123-slug formats)
-          DISCUSSION_ID=$(echo "$FORUM_URL" | grep -oP '/d/\K\d+' || echo "")
+          # Using sed for portability (grep -oP is GNU-specific)
+          DISCUSSION_ID=$(echo "$FORUM_URL" | sed -n 's|.*/d/\([0-9]*\).*|\1|p')
 
           if [ -z "$DISCUSSION_ID" ]; then
             echo "Error: Could not extract discussion ID from forum URL: $FORUM_URL"
@@ -45,54 +45,22 @@ jobs:
           fi
 
           # Extract base URL (everything before /d/)
-          FLARUM_URL=$(echo "$FORUM_URL" | grep -oP '^https?://[^/]+')
+          FLARUM_URL=$(echo "$FORUM_URL" | sed -n 's|^\(https\?://[^/]*\).*|\1|p')
 
           echo "discussion_id=$DISCUSSION_ID" >> $GITHUB_OUTPUT
           echo "flarum_url=$FLARUM_URL" >> $GITHUB_OUTPUT
           echo "Found discussion ID: $DISCUSSION_ID"
           echo "Flarum site: $FLARUM_URL"
 
-      - name: Send Release Notification to Flarum
-        run: |
-          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST ${{ steps.flarum-info.outputs.flarum_url }}/api/fof/releases/webhook \
-            -H "Content-Type: application/json" \
-            -H "Authorization: Token ${{ secrets.FLARUM_API_TOKEN }}" \
-            -d @- <<EOF
-          {
-            "discussion_id": ${{ steps.flarum-info.outputs.discussion_id }},
-            "changelog": $(echo '${{ github.event.release.body }}' | jq -R -s .),
-            "tag_name": "${{ github.event.release.tag_name }}",
-            "release_url": "${{ github.event.release.html_url }}",
-            "repository_name": "${{ github.repository }}",
-            "author": "${{ github.event.release.author.login }}"
-          }
-          EOF
-          )
-
-          # Extract HTTP status code
-          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
-          BODY=$(echo "$RESPONSE" | sed '$d')
-
-          echo "Response body: $BODY"
-          echo "HTTP status: $HTTP_CODE"
-
-          # Check if request was successful
-          if [ "$HTTP_CODE" -eq 201 ]; then
-            echo "✓ Successfully posted release notification to Flarum"
-          else
-            echo "✗ Failed to post release notification (HTTP $HTTP_CODE)"
-            echo "Response: $BODY"
-            exit 1
-          fi
-
-      - name: Troubleshooting Info
-        if: failure()
-        run: |
-          echo "Failed to send release notification to Flarum"
-          echo ""
-          echo "Please check:"
-          echo "  - FLARUM_API_TOKEN secret is set correctly"
-          echo "  - composer.json has 'support.forum' field with valid Flarum discussion URL"
-          echo "  - The discussion exists and is not deleted"
-          echo "  - The API token user has permission to post in the discussion"
-          echo "  - The FoF Extension Releases extension is installed and enabled"
+      - name: Notify Flarum
+        uses: FriendsOfFlarum/extension-releases/.github/workflows/REUSABLE_flarum-release-notification.yml@2.x
+        with:
+          flarum_url: ${{ steps.flarum-info.outputs.flarum_url }}
+          discussion_id: ${{ steps.flarum-info.outputs.discussion_id }}
+          changelog: ${{ github.event.release.body || '' }}
+          tag_name: ${{ github.event.release.tag_name }}
+          release_url: ${{ github.event.release.html_url }}
+          # author can be null for automated releases; fallback to workflow actor
+          author: ${{ github.event.release.author.login || github.actor || '' }}
+        secrets:
+          flarum_api_token: ${{ secrets.FLARUM_API_TOKEN }}
