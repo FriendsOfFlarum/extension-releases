@@ -39,6 +39,7 @@ class ReceiveWebhookController implements RequestHandlerInterface
         $tagName = Arr::get($body, 'tag_name');
         $releaseUrl = Arr::get($body, 'release_url');
         $author = Arr::get($body, 'author');
+        $flarumVersion = Arr::get($body, 'flarum_version');
 
         if (!$discussionId || !$changelog || !$tagName) {
             throw new ValidationException([
@@ -53,6 +54,7 @@ class ReceiveWebhookController implements RequestHandlerInterface
             $tagName,
             $releaseUrl,
             $author,
+            $flarumVersion,
             $request
         );
 
