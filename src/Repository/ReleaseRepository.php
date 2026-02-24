@@ -14,6 +14,12 @@ use Psr\Http\Message\ServerRequestInterface;
 
 class ReleaseRepository
 {
+    /** @var array<string, string>|null */
+    protected ?array $mappingsCache = null;
+
+    /** @var array<string, string> forum username => mention string */
+    protected array $mentionCache = [];
+
     public function __construct(
         protected ExtensionManager $extensions,
         protected SettingsRepositoryInterface $settings,
@@ -29,7 +35,7 @@ class ReleaseRepository
      *
      * @return array{id: int, number: int}
      */
-    public function createReleasePost(User $user, int $discussionId, ?string $changelog, string $tagName, ?string $releaseUrl, ?string $author, ServerRequestInterface $request): array
+    public function createReleasePost(User $user, int $discussionId, ?string $changelog, string $tagName, ?string $releaseUrl, ?string $author, ?string $flarumVersion, ServerRequestInterface $request): array
     {
         $discussion = Discussion::query()
             ->whereVisibleTo($user)
@@ -37,7 +43,7 @@ class ReleaseRepository
 
         $user->assertCan('reply', $discussion);
 
-        $content = $this->formatReleaseContent($changelog, $tagName, $releaseUrl ?? '', $author ?? '');
+        $content = $this->formatReleaseContent($changelog, $tagName, $releaseUrl ?? '', $author ?? '', $flarumVersion ?? '');
         $ipAddress = $request->getAttribute('ipAddress') ?? '127.0.0.1';
 
         $post = new CommentPost();
@@ -68,24 +74,58 @@ class ReleaseRepository
         ];
     }
 
-    protected function formatReleaseContent(?string $changelog, string $tagName, string $releaseUrl, string $author): string
+    protected function formatReleaseContent(?string $changelog, string $tagName, string $releaseUrl, string $author, string $flarumVersion = ''): string
     {
         $content = "## 🚀 New Release: {$tagName}\n\n";
+        if ($flarumVersion !== '') {
+            $content .= "_" . $this->resolveFlarumCompatibilityLabel($flarumVersion) . "_\n\n";
+        }
 
         if ($author !== '') {
             $displayAuthor = $this->resolveAuthorMention($author);
-            $content .= "**Author:** {$displayAuthor}\n";
+            $content .= "**Released by:** {$displayAuthor}\n";
         }
+
         if ($releaseUrl !== '') {
-            $content .= "**Release URL:** {$releaseUrl}\n\n";
+            $content .= "**Release URL:** {$releaseUrl}\n";
         }
 
         if ($changelog) {
-            $content .= "### Changelog\n\n";
-            $content .= $this->replacePlatformUsernamesInContent($changelog);
+            $content .= "\n----\n\n";
+            $content .= $this->replacePlatformUsernamesInContent($this->cleanChangelog($changelog));
         }
 
         return $content;
+    }
+
+    protected function resolveFlarumCompatibilityLabel(string $constraint): string
+    {
+        // Extract all version numbers from the constraint string
+        preg_match_all('/\d+\.\d+/', $constraint, $matches);
+
+        if (empty($matches[0])) {
+            return $constraint;
+        }
+
+        $majors = array_unique(array_map(fn (string $v) => (int) explode('.', $v)[0], $matches[0]));
+
+        if (count($majors) === 1) {
+            return "Targets Flarum " . reset($majors) . ".x";
+        }
+
+        // Multiple distinct major versions — show the raw constraint
+        return $constraint;
+    }
+
+    protected function cleanChangelog(string $changelog): string
+    {
+        // Remove GitHub's "## What's Changed" heading
+        $changelog = preg_replace('/^##\s+What\'s Changed\s*\n/im', '', $changelog);
+
+        // Collapse runs of 3+ blank lines down to 2
+        $changelog = preg_replace('/\n{3,}/', "\n\n", $changelog);
+
+        return trim($changelog) . "\n";
     }
 
     /**
@@ -99,6 +139,9 @@ class ReleaseRepository
             return $content;
         }
 
+        // Pre-fetch all mapped forum usernames in a single query
+        $this->primeMentionCache(array_values($mappings));
+
         // Replace longer usernames first to avoid partial matches (e.g. "im" inside "imorland")
         uksort($mappings, fn (string $a, string $b) => strlen($b) <=> strlen($a));
 
@@ -108,17 +151,46 @@ class ReleaseRepository
             if ($platform === '' || $forum === '') {
                 continue;
             }
-            $mention = $this->formatUserMention($forum);
+            $mention = $this->mentionCache[$forum] ?? null;
             if ($mention === null) {
                 continue;
             }
             $quoted = preg_quote($platform, '/');
-            // Match @username (consume the @) or bare username when not already part of a mention
-            $pattern = '/@' . $quoted . '\b|(?<![@\w])' . $quoted . '\b/ui';
+            // Match @username (consume the @) or bare username when not already part of a mention or URL path
+            $pattern = '/@' . $quoted . '\b|(?<![@\w\/])' . $quoted . '\b/ui';
             $content = preg_replace($pattern, $mention, $content);
         }
 
         return $content;
+    }
+
+    /**
+     * Load mentions for a list of forum usernames in one query and populate the cache.
+     *
+     * @param string[] $forumUsernames
+     */
+    protected function primeMentionCache(array $forumUsernames): void
+    {
+        $forumUsernames = array_unique(array_filter(array_map('trim', $forumUsernames)));
+        $uncached = array_diff($forumUsernames, array_keys($this->mentionCache));
+
+        if (empty($uncached)) {
+            return;
+        }
+
+        $users = $this->users->query()->whereIn('username', $uncached)->get();
+
+        foreach ($users as $user) {
+            $displayName = str_replace(['"', '\\'], ['\\"', '\\\\'], $user->display_name ?? $user->username);
+            $this->mentionCache[$user->username] = '@"' . $displayName . '"#' . $user->id;
+        }
+
+        // Mark not-found usernames as null so we don't query again
+        foreach ($uncached as $username) {
+            if (!isset($this->mentionCache[$username])) {
+                $this->mentionCache[$username] = null;
+            }
+        }
     }
 
     /**
@@ -127,13 +199,11 @@ class ReleaseRepository
      */
     protected function formatUserMention(string $forumUsername): ?string
     {
-        $user = $this->users->query()->where('username', $forumUsername)->first();
-        if (!$user || !isset($user->id, $user->username)) {
-            return null;
+        if (!array_key_exists($forumUsername, $this->mentionCache)) {
+            $this->primeMentionCache([$forumUsername]);
         }
-        $displayName = str_replace(['"', '\\'], ['\\"', '\\\\'], $user->display_name ?? $user->username);
 
-        return '@"' . $displayName . '"#' . $user->id;
+        return $this->mentionCache[$forumUsername] ?? null;
     }
 
     /**
@@ -141,14 +211,18 @@ class ReleaseRepository
      */
     protected function getUsernameMappings(): array
     {
+        if ($this->mappingsCache !== null) {
+            return $this->mappingsCache;
+        }
+
         $raw = $this->settings->get('fof-releases.username_mappings');
         if (!$raw) {
-            return [];
+            return $this->mappingsCache = [];
         }
 
         $decoded = json_decode($raw, true);
         if (!is_array($decoded)) {
-            return [];
+            return $this->mappingsCache = [];
         }
 
         $mappings = [];
@@ -160,7 +234,7 @@ class ReleaseRepository
             }
         }
 
-        return $mappings;
+        return $this->mappingsCache = $mappings;
     }
 
     /**
@@ -182,6 +256,9 @@ class ReleaseRepository
             }
         }
 
-        return $platformUsername;
+        // No mapping found — try a direct lookup by the platform username itself.
+        $mention = $this->formatUserMention($platformUsername);
+
+        return $mention ?? $platformUsername;
     }
 }

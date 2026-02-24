@@ -49,6 +49,11 @@ on:
         type: string
         required: false
         default: ""
+      flarum_version:
+        description: "Flarum version constraint override. Defaults to require[flarum/core] from composer.json"
+        type: string
+        required: false
+        default: ""
     secrets:
       flarum_api_token:
         description: "Flarum API token for authentication"
@@ -67,6 +72,7 @@ jobs:
         id: flarum
         env:
           FLARUM_HOSTNAME_INPUT: ${{ inputs.flarum_hostname }}
+          FLARUM_VERSION_INPUT: ${{ inputs.flarum_version }}
         run: |
           FORUM_URL=$(jq -r '.support.forum // empty' composer.json)
 
@@ -89,8 +95,15 @@ jobs:
             exit 1
           fi
 
+          if [ -n "$FLARUM_VERSION_INPUT" ]; then
+            FLARUM_VERSION="$FLARUM_VERSION_INPUT"
+          else
+            FLARUM_VERSION=$(jq -r '.require["flarum/core"] // empty' composer.json)
+          fi
+
           echo "discussion_id=$DISCUSSION_ID" >> $GITHUB_OUTPUT
           echo "flarum_url=$FLARUM_URL" >> $GITHUB_OUTPUT
+          echo "flarum_version=$FLARUM_VERSION" >> $GITHUB_OUTPUT
 
       - name: Send Release Notification to Flarum
         env:
@@ -103,7 +116,8 @@ jobs:
             --arg tag_name '${{ inputs.tag_name }}' \
             --arg release_url '${{ inputs.release_url }}' \
             --arg author '${{ inputs.author }}' \
-            '{discussion_id: ($discussion_id | tonumber), changelog: $changelog, tag_name: $tag_name, release_url: $release_url, author: $author}')
+            --arg flarum_version '${{ steps.flarum.outputs.flarum_version }}' \
+            '{discussion_id: ($discussion_id | tonumber), changelog: $changelog, tag_name: $tag_name, release_url: $release_url, author: $author, flarum_version: $flarum_version}')
 
           RESPONSE=$(curl -s -w "\n%{http_code}" -X POST ${{ steps.flarum.outputs.flarum_url }}/api/fof/releases/webhook \
             -H "Content-Type: application/json" \
